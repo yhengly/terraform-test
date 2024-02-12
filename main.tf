@@ -121,6 +121,7 @@ resource "aws_db_instance" "pg" {
   engine_version         = "12"
   vpc_security_group_ids = [aws_security_group.default.id]
   db_subnet_group_name   = aws_db_subnet_group.private.name
+  skip_final_snapshot    = true
   tags                   = {
     Name = "${var.namespace}-pg"
   }
