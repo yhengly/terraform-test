@@ -1,8 +1,6 @@
 # VPC
 resource "aws_vpc" "default" {
-  cidr_block           = "10.0.0.0/16"
-  enable_dns_hostnames = true
-  enable_dns_support   = true
+  cidr_block = "10.0.0.0/16"
 
   tags = {
     Name = "${var.namespace}-vpc"
@@ -11,26 +9,26 @@ resource "aws_vpc" "default" {
 
 resource "aws_subnet" "private1" {
   vpc_id            = aws_vpc.default.id
-  cidr_block        = aws_vpc.default.cidr_block
+  cidr_block        = var.vpc_cidr_block1
   availability_zone = var.availability_zone
-  tags = {
+  tags              = {
     Name = "${var.namespace}-subnet-private-${var.availability_zone}"
   }
 }
 
-/*resource "aws_subnet" "private2" {
+resource "aws_subnet" "private2" {
   vpc_id            = aws_vpc.default.id
   cidr_block        = var.vpc_cidr_block2
   availability_zone = var.availability_zone2
-  tags = {
+  tags              = {
     Name = "${var.namespace}-subnet-private-${var.availability_zone2}"
   }
-}*/
+}
 
-/*resource "aws_db_subnet_group" "private" {
+resource "aws_db_subnet_group" "private" {
   name       = "${var.namespace}-db-subnet-group"
   subnet_ids = [aws_subnet.private1.id, aws_subnet.private2.id]
-}*/
+}
 
 resource "aws_security_group" "default" {
   name        = "${var.namespace}-security-group"
@@ -38,45 +36,61 @@ resource "aws_security_group" "default" {
   vpc_id      = aws_vpc.default.id
 }
 
+# Define the IAM role for RDS and S3 full access
 resource "aws_iam_role" "full_access_role" {
   name               = "${var.namespace}-full-access-role"
   assume_role_policy = jsonencode({
-    "Version" : "2012-10-17",
-    "Statement" : [
+    Version   = "2012-10-17",
+    Statement = [
       {
-        "Effect" : "Allow",
-        "Action" : [
-          "sts:AssumeRole"
-        ],
-        "Principal" : {
-          "Service" : [
-            "ec2.amazonaws.com"
-          ]
-        }
+        Effect    = "Allow",
+        Principal = {
+          Service = "rds.amazonaws.com"
+        },
+        Action = "sts:AssumeRole"
       }
     ]
   })
 }
 
-/*resource "aws_s3_bucket_policy" "public_read_policy" {
-  bucket = aws_s3_bucket.public.id
+# Define the IAM policy with full access to RDS and S3
+resource "aws_iam_policy" "full_access_policy" {
+  name   = "full-access-policy"
   policy = jsonencode({
     Version   = "2012-10-17",
     Statement = [
       {
-        Effect    = "Allow",
-        Principal = "*",
-        Action    = [
-          "s3:GetObject",
-          "s3:ListBucket"
-        ],
-        Resource = [
-          "${aws_s3_bucket.public.arn}*//*"
-        ]
+        Effect   = "Allow",
+        Action   = "rds:*",
+        Resource = "*"
+      },
+      {
+        Effect   = "Allow",
+        Action   = "s3:*",
+        Resource = "*"
       }
     ]
   })
-}*/
+}
+
+# Attach the IAM policy to the IAM role
+resource "aws_iam_policy_attachment" "full_access_attachment" {
+  name       = "${var.namespace}-full-access-attachment"
+  roles      = [aws_iam_role.full_access_role.name]
+  policy_arn = aws_iam_policy.full_access_policy.arn
+}
+
+resource "aws_iam_policy_attachment" "s3_full_access_attachment" {
+  name       = "${var.namespace}-s3-full-access-attachment"
+  roles      = [aws_iam_role.full_access_role.name]
+  policy_arn = "arn:aws:iam::aws:policy/AmazonS3FullAccess"
+}
+
+resource "aws_iam_policy_attachment" "rds_full_access_attachment" {
+  name       = "${var.namespace}-rds-full-access-attachment"
+  roles      = [aws_iam_role.full_access_role.name]
+  policy_arn = "arn:aws:iam::aws:policy/AmazonRDSFullAccess"
+}
 
 # S3 Bucket
 resource "aws_s3_bucket" "public" {
@@ -88,7 +102,6 @@ resource "aws_s3_bucket_public_access_block" "example" {
 
   block_public_acls   = false
   block_public_policy = false
-
 }
 
 resource "aws_s3_bucket_object" "index_html" {
@@ -98,17 +111,20 @@ resource "aws_s3_bucket_object" "index_html" {
 }
 
 # RDS PG
-/*resource "aws_db_instance" "pg" {
-  db_name                = "${var.namespace}-pg"
+resource "aws_db_instance" "pg" {
+  db_name                = "terraformTest"
   engine                 = "postgres"
   instance_class         = "db.t3.micro"
-  username               = "admin"
-  password               = "123456"
+  username               = "yonatan"
+  password               = "qwerty123456"
   allocated_storage      = 20
-  engine_version         = "11.12"
+  engine_version         = "12"
   vpc_security_group_ids = [aws_security_group.default.id]
   db_subnet_group_name   = aws_db_subnet_group.private.name
-}*/
+  tags                   = {
+    Name = "${var.namespace}-pg"
+  }
+}
 
 resource "aws_iam_instance_profile" "write" {
   name = "write-instance-profile"
@@ -122,7 +138,7 @@ resource "aws_instance" "ec2" {
   subnet_id              = aws_subnet.private1.id
   vpc_security_group_ids = [aws_security_group.default.id]
   iam_instance_profile   = aws_iam_instance_profile.write.name
-  tags = {
+  tags                   = {
     Name = "${var.namespace}-ec2"
   }
 }
